@@ -10,6 +10,9 @@ CUDA version: 11.7
 Python 3.10.15
 
 ## Usage
+###
+Download the weights file like [depth_anything_v2_metric_vkitti_vitl.pth](https://github.com/DepthAnything/Depth-Anything-V2/tree/main) and put it in the checkpoints directory.
+
 ### Generate depth map from 'inputs' to 'outputs' directory
 ```bash
 python run.py  --encoder vitl --load-from checkpoints/depth_anything_v2_metric_vkitti_vitl.pth --max-depth 80 --img-path './inputs' --outdir './outputs'

@@ -10,15 +10,20 @@ CUDA version: 11.7
 Python 3.10.15
 
 ## Usage
+### Generate depth map from 'inputs' to 'outputs' directory
 ```bash
-# Generate depth map from 'inputs' to 'outputs' directory
 python run.py  --encoder vitl --load-from checkpoints/depth_anything_v2_metric_vkitti_vitl.pth --max-depth 80 --img-path './inputs' --outdir './outputs'
-# Save the depth map as a point cloud file
+```
+### Save the depth map as a point cloud file
+```bash
 python depth_to_pointcloud.py  --encoder vitl --load-from checkpoints/depth_anything_v2_metric_vkitti_vitl.pth --max-depth 20 --img-path './inputs' --outdir './outputs'
-# Generate a point cloud of the original view
+```
+### Generate a point cloud of the original view
+```bash
 python 3dpoints.py
-
+```
 ## Refernces
+```bash
 @article{depth_anything_v2,
   title={Depth Anything V2},
   author={Yang, Lihe and Kang, Bingyi and Huang, Zilong and Zhao, Zhen and Xu, Xiaogang and Feng, Jiashi and Zhao, Hengshuang},
@@ -32,3 +37,4 @@ python 3dpoints.py
   booktitle={CVPR},
   year={2024}
 }
+```

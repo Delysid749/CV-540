@@ -1,2 +1,3 @@
 # CV-540
-计算机视觉小组
+## environment and requirements
+python 3.10.0

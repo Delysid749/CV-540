@@ -1,13 +1,13 @@
 # CV-540
 ## Environment
-Environment:
-matplotlib: 3.9.2 
-opencv-python: 4.10.0
-open3d: 0.18.0 
-torch: 1.13.1 
-torchvision: 0.14.1 
-CUDA version: 11.7 
-Python 3.10.15
+Environment:  
+matplotlib: 3.9.2  
+opencv-python: 4.10.0  
+open3d: 0.18.0  
+torch: 1.13.1  
+torchvision: 0.14.1  
+CUDA version: 11.7  
+Python 3.10.15  
 
 ## Usage
 ###

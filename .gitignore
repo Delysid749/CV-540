@@ -1,0 +1,45 @@
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 本地环境设置
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# VSCode 及 PyCharm 等 IDE 配置
+.idea/
+.vscode/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# 日志文件
+*.log
+
+# 数据库
+*.sqlite3
+
+# 外部库和包
+lib/
+bin/
+*.egg-info/
+.eggs/
+site-packages/
+
+# 外部下载依赖
+downloads/
+pip-wheel-metadata/
+
+# 临时文件
+*.temp
+*.tmp

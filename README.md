@@ -27,6 +27,11 @@ python depth_to_pointcloud.py  --encoder vitl --load-from checkpoints/depth_anyt
 python 3dpoints.py
 ```
 
+### Use pothole filling for individual point clouds with potholes  
+```bash
+python fill.py ----file "Path_to_Your_Point_Cloud_file"
+```
+
 ## Refernces
 The URL of the original article is [Depth-Anything-V2](https://github.com/DepthAnything/Depth-Anything-V2/tree/main)  
 

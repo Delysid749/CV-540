@@ -1,10 +1,9 @@
 import argparse
-import copy
 import open3d as o3d
 import numpy as np
-from scipy.optimize import least_squares
-from scipy.spatial import ConvexHull, KDTree
-from scipy.optimize import curve_fit
+from scipy.spatial import ConvexHull
+from scipy.spatial import KDTree
+
 
 if __name__ == '__main__':
     # adjust view to XOY plane and show points cloud
@@ -42,7 +41,7 @@ if __name__ == '__main__':
 
         return inlier_cloud
 
-    def points_distance(pcd):
+    def densiy_and_distance(pcd):
         points = np.asarray(pcd.points)
         # Construct a KDTree
         kdtree = KDTree(points)
@@ -50,166 +49,197 @@ if __name__ == '__main__':
         distances, _ = kdtree.query(points, k=2)
         # Calculate the mean distance
         mean_distance = np.mean(distances[:, 1])
-        return mean_distance
 
-    # Define a simplified nonlinear surface model
-    def nonlinear_surface_model(params, X, Y, Z):
-        a, b, c, d, e, f = params
-        return a * X ** 2 + b * Y ** 2 + c * X * Y + d * X + e * Y + f - Z
+        min_bound = points.min(axis=0)
+        max_bound = points.max(axis=0)
+        volume = np.prod(max_bound - min_bound)
+
+        # Calculate the number of points per unit volume
+        num_points = len(points)
+        density = num_points / volume
+        print(f"Number of points: {num_points}, Density: {density}, mean distance: {mean_distance}")
+        return mean_distance,density
 
     # define a function to fit plane by Least Squares Method
     def generate_plane(point_cloud):
+
         # Extract points from the point cloud
         points = np.asarray(point_cloud.points)
 
-        # Initial guess for the parameters
-        initial_guess = np.zeros(6)
-        # Perform least squares fitting
-        result = least_squares(nonlinear_surface_model, initial_guess, args=(points[:, 0], points[:, 1], points[:, 2]))
-        # Extract the optimal parameters
-        parms = result.x
+        # Compute the centroid of the points
+        centroid = np.mean(points, axis=0)
 
-        # Generate surface points
-        density = 100000
+        # Compute the covariance matrix
+        cov_matrix = np.cov(points - centroid, rowvar=False)
+
+        # Compute the eigenvalues and eigenvectors
+        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+
+        # The normal vector is the eigenvector corresponding to the smallest eigenvalue
+        normal_vector = eigenvectors[:, 0]
+
+        # Compute the plane offset (D) using the centroid
+        D = -normal_vector.dot(centroid)
+
+        # Compute the minimum bounding box of the point cloud
         min_bound = points.min(axis=0)
         max_bound = points.max(axis=0)
-        random_points = np.random.rand(density, 2) * (max_bound[:2] - min_bound[:2]) + min_bound[:2]
-        X_rand = random_points[:, 0]
-        Y_rand = random_points[:, 1]
-        Z_rand = parms[0] * X_rand**2 + parms[1] * Y_rand**2 + parms[2] * X_rand * Y_rand + parms[3] * X_rand + parms[4] * Y_rand + parms[5]
 
-        surface_points = np.column_stack((X_rand, Y_rand, Z_rand))
-        surface_pcd = o3d.geometry.PointCloud()
-        surface_pcd.points = o3d.utility.Vector3dVector(surface_points)
+        density = 100000
+        # Generate random points within the bounding box
+        random_points = np.random.rand(density, 3) * (max_bound - min_bound) + min_bound
+        # Project the random points onto the plane
+        distances = (random_points @ normal_vector + D) / np.linalg.norm(normal_vector)
+        plane_points = random_points - np.outer(distances, normal_vector)
+
+        # Filter the plane points to be within the bounding box of the original point cloud
+        within_bounds = np.all((plane_points >= min_bound) & (plane_points <= max_bound), axis=1)
+        plane_points = plane_points[within_bounds]
+
+        plane_pcd = o3d.geometry.PointCloud()
+        plane_pcd.points = o3d.utility.Vector3dVector(plane_points)
 
         # Apply Moving Least Squares (MLS) smoothing
-        surface_pcd = surface_pcd.voxel_down_sample(voxel_size=0.01)
-        surface_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-        # Set the color of the surface to gray
-        surface_pcd.paint_uniform_color([0.5, 0.5, 0.5])
-        return surface_pcd, parms
+        plane_pcd = plane_pcd.voxel_down_sample(voxel_size=0.01)
+        plane_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+        plane_equation = f"{normal_vector[0]}x + {normal_vector[1]}y + {normal_vector[2]}z + {D} = 0"
+        #print(f"Plane equation: {plane_equation}")
 
-    # The function is coloured and divided into inner and outer points based on the distance between point clouds
-    def colorize_distance_and_segment(image_rotate, plane, params, threshold, mode=0):
-        # Extract the points from the rotated point cloud
-        points = np.asarray(image_rotate.points)
-        X = points[:, 0]
-        Y = points[:, 1]
-        Z = points[:, 2]
+        # Set the color of the plane to gray
+        plane_pcd.paint_uniform_color([0.5, 0.5, 0.5])
+        return plane_pcd, normal_vector
 
-        # Extract the points from the plane point cloud
-        plane_points = np.asarray(plane.points)
-        plane_kdtree = KDTree(plane_points)
+    # This function precomputes the neighbors of each point in the point cloud
+    def precompute_neighbors(point_cloud, search_radius):
+        kdtree = o3d.geometry.KDTreeFlann(point_cloud)
+        neighbors = []
+        for i in range(len(point_cloud.points)):
+            [_, idx, _] = kdtree.search_radius_vector_3d(point_cloud.points[i], search_radius)
+            neighbors.append(idx)
+        return neighbors
 
-        # Calculate the distances from the points to the surface using KDTree
-        _, indices = plane_kdtree.query(points)
-        nearest_plane_points = plane_points[indices]
+    # This function computes the curvature of a point based on its neighbors
+    def compute_curvature(neighbors, points, i):
+        idx = neighbors[i]
+        if len(idx) < 3:
+            return 0
+        neighbors_points = points[idx, :]
+        covariance_matrix = np.cov(neighbors_points.T)
+        eigenvalues, _ = np.linalg.eigh(covariance_matrix)
+        curvature = eigenvalues[0] / np.sum(eigenvalues)
+        return curvature
 
-        # Calculate the normal vector of the plane
-        normal_vector = np.array([params[3], params[4], -1])
-        normal_vector /= np.linalg.norm(normal_vector)
+    # This function estimates the curvature of the point cloud
+    def estimate_curvature(point_cloud):
+        global mean_distance
+        # Set the search radius for estimating normals( which defines the neighborhood of each point )
+        search_radius = 30 * mean_distance
+        # Estimate normals
+        point_cloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=search_radius, max_nn=30))
 
-        # Calculate signed distances
-        distances = np.dot(points - nearest_plane_points, -normal_vector)
+        # Precompute neighbors
+        neighbors = precompute_neighbors(point_cloud, search_radius)
+        points = np.asarray(point_cloud.points)
 
-        colors = np.zeros((points.shape[0], 3))
-        # Normalize the distances to the range 0-255
-        distances_normalized = 255 * (np.abs(distances) - np.abs(distances).min()) / (np.abs(distances).max() - np.abs(distances).min())
+        # Compute curvature sequentially
+        curvatures = [compute_curvature(neighbors, points, i) for i in range(len(points))]
 
-        threshold = threshold * 255
+        return np.array(curvatures)
 
-        # Split the points into inliers and outliers
-        if mode == 1:
-            outliers_indices = np.where(distances > 0)[0]
-            inliers_indices = np.where(distances <= 0)[0]
+    # This function segments the point cloud based on curvature
+    def segment_by_curvature(point_cloud, curvatures, curvature_threshold=0.005):
+        inliers_indices = np.where(curvatures <= curvature_threshold)[0]
+        outliers_indices = np.where(curvatures > curvature_threshold)[0]
+        print(f"Number of inliers: {len(inliers_indices)}, Number of outliers: {len(outliers_indices)}")
 
-        elif mode == 2:
-            outliers_indices = np.where((distances > 0) & (distances_normalized > threshold))[0]
-            inliers_indices = np.where((distances <= 0) | (distances_normalized < threshold))[0]
-        else:
-            outliers_indices = np.where(distances_normalized > threshold)[0]
-            inliers_indices = np.where(distances_normalized <= threshold)[0]
+        inliers = point_cloud.select_by_index(inliers_indices)
+        outliers = point_cloud.select_by_index(outliers_indices)
+        return inliers, outliers
 
-        # Create inliers and outliers point clouds
-        inliers = image_rotate.select_by_index(inliers_indices)
-        outliers = image_rotate.select_by_index(outliers_indices)
-        # Set the colors based on the normalized distances
-        colors[:, 0] = distances_normalized  # Set the red channel based on the distances
-        colors[:, 1] = distances_normalized  # Set the green channel based on the distances
-        colors[:, 2] = distances_normalized  # Set the blue channel based on the distances
-        # Apply the colors to the point cloud
-        rotate_clone = copy.deepcopy(image_rotate)
-        rotate_clone.colors = o3d.utility.Vector3dVector(colors / 255.0)
-
-        return inliers, outliers, rotate_clone
-
-    def iterative_plane_fitting(point_cloud, max_iterations=100, initial_threshold=0.1, threshold_adjustment=0.01):
-
+    # This function finds the optimal curvature threshold for segmenting the point cloud
+    def find_optimal_curvature_threshold(point_cloud, curvatures, initial_threshold=0.001, step=0.0001, max_iterations=100):
         best_threshold = initial_threshold
         min_change_ratio = float('inf')
-        origin_cloud = copy.deepcopy(point_cloud)
-        previous_inliers_count = 0
-        stable_iterations = 1
+        previous_outliers_count = 0
+        threshold = best_threshold
 
-        for threshold in np.arange(0.1, 0.90, 0.01):
-            plane, normal_vector = generate_plane(point_cloud)
-            inliers, outliers, _ = colorize_distance_and_segment(origin_cloud, plane, normal_vector, threshold)
-            current_inliers_count = len(inliers.points)
-            if previous_inliers_count == 0:
+        stable_iterations = 0
+        for i in range(max_iterations):
+            inliers, outliers = segment_by_curvature(point_cloud, curvatures, threshold)
+            current_outliers_count = len(outliers.points)
+            if previous_outliers_count == 0:
                 change_ratio = 1
             else:
-                change_ratio = abs(current_inliers_count - previous_inliers_count) / current_inliers_count
+                change_ratio = abs(current_outliers_count - previous_outliers_count) / current_outliers_count
+            print(f"Iteration {i + 1}: Previous outliers: {previous_outliers_count}, Current outliers: {current_outliers_count}, Change ratio: {change_ratio}, Threshold: {threshold}, Best threshold: {best_threshold}")
 
             if change_ratio < min_change_ratio:
                 min_change_ratio = change_ratio
                 best_threshold = threshold
-                stable_iterations = 1
+                stable_iterations = 0  # Reset stable iterations counter
             else:
                 stable_iterations += 1
-            previous_inliers_count = current_inliers_count
-            print(f"Best threshold: {best_threshold}, Threshold: {threshold}, Inliers count: {current_inliers_count}, Change ratio: {change_ratio}")
 
             if change_ratio < 0.01 and change_ratio != 0:
                 break
-            if stable_iterations >= 8:
+            if stable_iterations >= 10:
                 break
-        optimal_threshold = best_threshold
-        # Perform preliminary search for the optimal threshold
-        print(f"Optimal threshold determined: {optimal_threshold}")
 
-        plane, normal_vector = generate_plane(point_cloud)
-        inliers, outliers, colorize = colorize_distance_and_segment(origin_cloud, plane, normal_vector, optimal_threshold, mode=2)
-        draw_geometries([point_cloud, plane], window_name=f" Point Cloud")
-        draw_geometries([colorize], window_name=f"colorize")
-        draw_geometries([outliers], window_name=f"outliers")
-        return inliers, outliers, plane, normal_vector
+            previous_outliers_count = current_outliers_count
+            threshold = threshold + step
+        print(f"Optimal threshold determined: {best_threshold}")
+        inliers, outliers = segment_by_curvature(point_cloud, curvatures, best_threshold)
+        return best_threshold,inliers,outliers
+
+    def extract_hollow_region(outliers, original_pcd):
+        # Fit a plane to the outliers (pothole boundary)
+        plane_pcd, normal_vector = generate_plane(outliers)
+
+        # Identify points above the fitted plane
+        points = np.asarray(original_pcd.points)
+        D = -normal_vector.dot(np.squeeze(np.asarray(plane_pcd.points)[0]))
+        distances = (points @ normal_vector + D) / np.linalg.norm(normal_vector)
+        above_plane_indices = np.where(distances > 0)[0]
+        above_plane_points = np.asarray(original_pcd.select_by_index(above_plane_indices).points)
+        # Remove points that are part of the pothole boundary
+        outlier_points = np.asarray(outliers.points)
+        outlier_set = set(map(tuple, outlier_points))
+
+        hollow_region_indices = []
+        for i, point in enumerate(above_plane_points):
+            if tuple(point) not in outlier_set:
+                hollow_region_indices.append(above_plane_indices[i])
+        combined_indices = np.union1d(hollow_region_indices, above_plane_indices)
+
+        # Select the hollow region points from the original point cloud
+        hollow_region_pcd = original_pcd.select_by_index(combined_indices)
+        road_pcd = original_pcd.select_by_index(combined_indices, invert=True)
+
+        return hollow_region_pcd, plane_pcd, normal_vector, road_pcd
 
     # This function fills the points according to the distance of the point cloud from its upper boundary (the fitted road surface))
-    def filled_pothole(pcd, plane, params):
+    def filled_pothole(pcd, normal_vector, plane_point):
         global mean_distance
 
         # Extract points and colors from the point cloud
         points = np.asarray(pcd.points)
         colors = np.asarray(pcd.colors)
 
-        # Extract the points from the plane point cloud
-        plane_points = np.asarray(plane.points)
-        plane_kdtree = KDTree(plane_points)
+        # Compute the plane offset (D)
+        D = -normal_vector.dot(np.squeeze(np.asarray(plane_point.points)[0]))
 
-        # Calculate the distances from the points to the surface using KDTree
-        distances, indices = plane_kdtree.query(points)
-        nearest_plane_points = plane_points[indices]
+        # Calculate the distances from the points to the plane
+        distances = (points @ normal_vector + D) / np.linalg.norm(normal_vector)
 
         # Determine the maximum distance (depth)
         depth = distances.max()
 
         # Generate filled points based on the distances
         filled_points = []
-        for point, nearest_point, distance in zip(points, nearest_plane_points, distances):
+        for point, distance in zip(points, distances):
             num_fill_points = int(distance / mean_distance)  # Adjust the step size as needed
-            direction = (point - nearest_point) / distance  # Direction from the point to the nearest surface point
             for i in range(num_fill_points):
-                filled_points.append(point - i * mean_distance * direction)
+                filled_points.append(point - i * mean_distance * normal_vector)
 
         # Convert the filled points to a point cloud
         filled_points = np.array(filled_points)
@@ -228,18 +258,16 @@ if __name__ == '__main__':
         max_bound = points.max(axis=0)
         volume = 0.0
 
-        # Slice along the Y-axis
         y_slices = np.arange(min_bound[1], max_bound[1], slice_thickness)
         for y in y_slices:
             slice_points = points[(points[:, 1] >= y) & (points[:, 1] < y + slice_thickness)]
             if len(slice_points) >= 3:
-                # Check if points are collinear
-                if np.linalg.matrix_rank(slice_points[:, [0, 2]] - slice_points[0, [0, 2]]) >= 2:
-                    hull = ConvexHull(slice_points[:, [0, 2]])
-                    area = hull.volume  # Use the volume of the convex hull as the area of the slice
-                    volume += area * slice_thickness
+                hull = ConvexHull(slice_points[:, [0, 2]])
+                area = hull.volume
+                volume += area * slice_thickness
 
         return volume
+
 
     parser = argparse.ArgumentParser(description="Process point cloud data.")
     parser.add_argument("--file", type=str, required=True, help="Path to the point cloud file")
@@ -253,16 +281,23 @@ if __name__ == '__main__':
     draw_geometries([point_rotate], window_name="Smoothed Point Cloud")
 
     # Calculate the minimum distance between points
-    mean_distance = points_distance(point_rotate)
-    print(f"Minimum distance between points: {mean_distance}")
+    mean_distance, density = densiy_and_distance(point_rotate)
 
-    # Delineation of inner and outer points
-    inliers, outliers, plane, params = iterative_plane_fitting(point_rotate)
+    # Segment the point cloud based on curvature
+    curvatures = estimate_curvature(point_rotate)
+    optimal_threshold, inliers, outliers = find_optimal_curvature_threshold(point_rotate, curvatures)
+    draw_geometries([inliers], window_name="Inliers (Road Surface)")
+    draw_geometries([outliers], window_name="Outliers (Potholes or Protrusions)")
+
+    hollow, plane, normal_vector, road = extract_hollow_region(outliers, point_rotate)
+    draw_geometries([point_rotate, plane], window_name="Point Cloud with Plane")
+    draw_geometries([hollow], window_name="Hollow Region")
+    draw_geometries([road], window_name="Road Region")
 
     # fill the potholes
-    pcd_fill, depth = filled_pothole(outliers, plane, params)
+    pcd_fill, depth = filled_pothole(hollow, normal_vector, plane)
     draw_geometries([pcd_fill], window_name="Filled block")
-    draw_geometries([inliers, pcd_fill], window_name="Filled Pothole")
+    draw_geometries([pcd_fill, road], window_name="Filled Pothole")
 
     # Output depth and volume
     print(f"Estimated depth: {depth} m")

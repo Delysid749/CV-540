@@ -292,7 +292,7 @@ if __name__ == '__main__':
     # fill the potholes
     pcd_fill, depth = filled_pothole(outliers, normal_vector, plane)
     draw_geometries([pcd_fill], window_name="Filled block")
-    draw_geometries([pcd_fill, inliers], window_name="Filled Pothole")
+    draw_geometries([pcd_fill, point_rotate], window_name="Filled Pothole")
 
     # Output depth and volume
     print(f"Estimated depth: {depth} m")

@@ -215,7 +215,13 @@ if __name__ == '__main__':
         hollow_region_pcd = original_pcd.select_by_index(combined_indices)
         road_pcd = original_pcd.select_by_index(combined_indices, invert=True)
 
-        return hollow_region_pcd, plane_pcd, normal_vector, road_pcd
+        # Set the color of the hollow region to white，and the color of the road to gray
+        color = np.asarray(original_pcd.colors)
+        color[combined_indices] = [1, 1, 1]
+        color[outliers] = [0.5, 0.5, 0.5]
+        original_pcd.colors = o3d.utility.Vector3dVector(color)
+        
+        return hollow_region_pcd, plane_pcd, normal_vector, road_pcd, original_pcd
 
     # This function fills the points according to the distance of the point cloud from its upper boundary (the fitted road surface))
     def filled_pothole(pcd, normal_vector, plane_point):
@@ -289,10 +295,10 @@ if __name__ == '__main__':
     draw_geometries([inliers], window_name="Inliers (Road Surface)")
     draw_geometries([outliers], window_name="Outliers (Potholes or Protrusions)")
 
-    hollow, plane, normal_vector, road = extract_hollow_region(outliers, point_rotate)
+    hollow, plane, normal_vector, road, color = extract_hollow_region(outliers, point_rotate)
     draw_geometries([point_rotate, plane], window_name="Point Cloud with Plane")
+    draw_geometries([color], window_name="color")
     draw_geometries([hollow], window_name="Hollow Region")
-    draw_geometries([road], window_name="Road Region")
 
     # fill the potholes
     pcd_fill, depth = filled_pothole(hollow, normal_vector, plane)

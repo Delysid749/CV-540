@@ -4,10 +4,6 @@ import open3d as o3d
 import numpy as np
 from scipy.spatial import ConvexHull
 from scipy.spatial import KDTree
-import matplotlib.pyplot as plt
-from scipy.stats import norm
-from joblib import Parallel, delayed
-from sklearn.cluster import DBSCAN
 
 if __name__ == '__main__':
     # adjust view to XOY plane and show points cloud

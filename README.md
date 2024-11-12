@@ -28,10 +28,25 @@ python depth_to_pointcloud.py  --encoder vitl --load-from checkpoints/depth_anyt
 python 3dpoints.py
 ```
 
-### Use pothole filling for individual point clouds with potholes  
+### Pothole filling of individual point clouds by fitting planes  
 ```bash
-python fill.py ----file "Path_to_Your_Point_Cloud_file"
-```  
+python fill_plane.py ----file "Path_to_Your_Point_Cloud_file"
+```
+
+### Pothole filling of individual point clouds by fitting Curved surface  
+```bash
+python fill_mesh.py ----file "Path_to_Your_Point_Cloud_file"
+```
+
+### Pothole filling of individual point clouds by curvature  
+```bash
+python fill_curvature.py ----file "Path_to_Your_Point_Cloud_file"
+```
+
+### Using the QT interface to show code  
+```bash
+python qt.py
+```
 
 ## Stament  
 This project is an assignment for CV540.  

@@ -69,6 +69,7 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Images (*.png *.jpg *.bmp *.jpeg)")
         if file_name:
             self.display_image(file_name)
+            self.depth_map_label.clear()
             self.worker = Worker(file_name)
             self.worker.finished.connect(self.on_processing_finished)
             self.worker.start()

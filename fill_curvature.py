@@ -1,8 +1,6 @@
 import argparse
-import copy
 import open3d as o3d
 import numpy as np
-from pydantic_core.core_schema import none_schema
 from scipy.spatial import ConvexHull
 from scipy.spatial import KDTree
 

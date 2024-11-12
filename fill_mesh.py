@@ -171,7 +171,7 @@ if __name__ == '__main__':
 
             if change_ratio < 0.01 and change_ratio != 0:
                 break
-            if stable_iterations >= 8:
+            if stable_iterations >= 5:
                 break
         optimal_threshold = best_threshold
         # Perform preliminary search for the optimal threshold

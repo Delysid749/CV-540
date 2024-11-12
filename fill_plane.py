@@ -216,7 +216,8 @@ if __name__ == '__main__':
         plane, normal_vector = generate_plane(point_cloud)
         inliers, outliers, colorize = colorize_distance_and_segment(origin_cloud, normal_vector, plane,
                                                                     optimal_threshold, mode=2)
-        draw_geometries([inliers, plane], window_name=f" Colored Point Cloud")
+        draw_geometries([point_cloud, plane], window_name=f" Point Cloud")
+        draw_geometries([colorize], window_name=f"colorize")
         draw_geometries([outliers], window_name=f"outliers")
         return inliers, outliers, plane, normal_vector
 

@@ -3,9 +3,8 @@ import copy
 import open3d as o3d
 import numpy as np
 from scipy.optimize import least_squares
-from scipy.spatial import ConvexHull
-from scipy.spatial import KDTree
-
+from scipy.spatial import ConvexHull, KDTree
+from scipy.optimize import curve_fit
 
 if __name__ == '__main__':
     # adjust view to XOY plane and show points cloud
@@ -53,54 +52,45 @@ if __name__ == '__main__':
         mean_distance = np.mean(distances[:, 1])
         return mean_distance
 
-    def surface_func(params, X, Y):
+    # Define a simplified nonlinear surface model
+    def nonlinear_surface_model(params, X, Y, Z):
         a, b, c, d, e, f = params
-        return a * X ** 2 + b * Y ** 2 + c * X * Y + d * X + e * Y + f
+        return a * X ** 2 + b * Y ** 2 + c * X * Y + d * X + e * Y + f - Z
 
     # define a function to fit plane by Least Squares Method
     def generate_plane(point_cloud):
         # Extract points from the point cloud
         points = np.asarray(point_cloud.points)
-        X = points[:, 0]
-        Y = points[:, 1]
-        Z = points[:, 2]
-
-
-        # Define the residuals function for least squares fitting
-        def residuals(params, X, Y, Z):
-            return surface_func(params, X, Y) - Z
 
         # Initial guess for the parameters
-        initial_params = np.zeros(6)
-
+        initial_guess = np.zeros(6)
         # Perform least squares fitting
-        result = least_squares(residuals, initial_params, args=(X, Y, Z))
-        params = result.x
+        result = least_squares(nonlinear_surface_model, initial_guess, args=(points[:, 0], points[:, 1], points[:, 2]))
+        # Extract the optimal parameters
+        parms = result.x
 
         # Generate surface points
         density = 100000
         min_bound = points.min(axis=0)
         max_bound = points.max(axis=0)
-        random_points = np.random.rand(density, 3) * (max_bound - min_bound) + min_bound
+        random_points = np.random.rand(density, 2) * (max_bound[:2] - min_bound[:2]) + min_bound[:2]
         X_rand = random_points[:, 0]
         Y_rand = random_points[:, 1]
-        Z_rand = surface_func(params, X_rand, Y_rand)
+        Z_rand = parms[0] * X_rand**2 + parms[1] * Y_rand**2 + parms[2] * X_rand * Y_rand + parms[3] * X_rand + parms[4] * Y_rand + parms[5]
 
         surface_points = np.column_stack((X_rand, Y_rand, Z_rand))
-
         surface_pcd = o3d.geometry.PointCloud()
         surface_pcd.points = o3d.utility.Vector3dVector(surface_points)
 
         # Apply Moving Least Squares (MLS) smoothing
         surface_pcd = surface_pcd.voxel_down_sample(voxel_size=0.01)
         surface_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-
         # Set the color of the surface to gray
         surface_pcd.paint_uniform_color([0.5, 0.5, 0.5])
-        return surface_pcd, params
+        return surface_pcd, parms
 
     # The function is coloured and divided into inner and outer points based on the distance between point clouds
-    def colorize_distance_and_segment(image_rotate, plane, params, threshold,mode=0):
+    def colorize_distance_and_segment(image_rotate, plane, params, threshold, mode=0):
         # Extract the points from the rotated point cloud
         points = np.asarray(image_rotate.points)
         X = points[:, 0]
@@ -136,7 +126,7 @@ if __name__ == '__main__':
         elif mode == 2:
             outliers_indices = np.where((distances > 0) & (distances_normalized > threshold))[0]
             inliers_indices = np.where((distances <= 0) | (distances_normalized < threshold))[0]
-        else :
+        else:
             outliers_indices = np.where(distances_normalized > threshold)[0]
             inliers_indices = np.where(distances_normalized <= threshold)[0]
 
@@ -153,7 +143,7 @@ if __name__ == '__main__':
 
         return inliers, outliers, rotate_clone
 
-    def iterative_plane_fitting(point_cloud, max_iterations=100, initial_threshold=0.1,threshold_adjustment=0.01):
+    def iterative_plane_fitting(point_cloud, max_iterations=100, initial_threshold=0.1, threshold_adjustment=0.01):
 
         best_threshold = initial_threshold
         min_change_ratio = float('inf')
@@ -163,7 +153,7 @@ if __name__ == '__main__':
 
         for threshold in np.arange(0.1, 0.90, 0.01):
             plane, normal_vector = generate_plane(point_cloud)
-            inliers, outliers, _ = colorize_distance_and_segment(origin_cloud, plane, normal_vector,  threshold)
+            inliers, outliers, _ = colorize_distance_and_segment(origin_cloud, plane, normal_vector, threshold)
             current_inliers_count = len(inliers.points)
             if previous_inliers_count == 0:
                 change_ratio = 1
@@ -181,19 +171,18 @@ if __name__ == '__main__':
 
             if change_ratio < 0.01 and change_ratio != 0:
                 break
-            if stable_iterations >= 10:
+            if stable_iterations >= 8:
                 break
         optimal_threshold = best_threshold
         # Perform preliminary search for the optimal threshold
         print(f"Optimal threshold determined: {optimal_threshold}")
 
         plane, normal_vector = generate_plane(point_cloud)
-        inliers, outliers, colorize = colorize_distance_and_segment(origin_cloud, plane, normal_vector, optimal_threshold,mode=2)
+        inliers, outliers, colorize = colorize_distance_and_segment(origin_cloud, plane, normal_vector, optimal_threshold, mode=2)
         draw_geometries([point_cloud, plane], window_name=f" Point Cloud")
         draw_geometries([colorize], window_name=f"colorize")
         draw_geometries([outliers], window_name=f"outliers")
         return inliers, outliers, plane, normal_vector
-
 
     # This function fills the points according to the distance of the point cloud from its upper boundary (the fitted road surface))
     def filled_pothole(pcd, plane, params):

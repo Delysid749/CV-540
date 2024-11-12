@@ -214,11 +214,12 @@ if __name__ == '__main__':
         # Select the hollow region points from the original point cloud
         hollow_region_pcd = original_pcd.select_by_index(combined_indices)
         road_pcd = original_pcd.select_by_index(combined_indices, invert=True)
-
+        road_indices = np.setdiff1d(np.arange(len(points)), combined_indices)
+        
         # Set the color of the hollow region to white，and the color of the road to gray
         color = np.asarray(original_pcd.colors)
         color[combined_indices] = [1, 1, 1]
-        color[outliers] = [0.5, 0.5, 0.5]
+        color[road_indices] = [0.5, 0.5, 0.5]
         original_pcd.colors = o3d.utility.Vector3dVector(color)
         
         return hollow_region_pcd, plane_pcd, normal_vector, road_pcd, original_pcd

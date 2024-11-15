@@ -1,4 +1,5 @@
-# Monocular estimation of pothole depth and filling of potholes
+# Monocular estimation of pothole depth and filling of potholes  
+![1](https://github.com/user-attachments/assets/91831463-53ce-44e8-b98f-491037be84b6)
 ## Environment  
 matplotlib: 3.9.2  
 opencv-python: 4.10.0  
@@ -8,6 +9,11 @@ torchvision: 0.14.1
 CUDA version: 11.7  
 Python 3.10.15  
 scipy 1.13.1  
+
+## Image Data Acquisition  
+Images for this project were sourced from two datasets: [Road Pothole Detection Dataset2024](https://aistudio.baidu.com/datasetdetail/292614) and [Pothole Dataset](https://public.roboflow.com/object-detection/pothole).  
+
+The pothole pavement images used were subjected to target detection using the [YOLO11](https://github.com/ultralytics/ultralytics) model, which yields the pothole roadway images used later to generate depth maps and point clouds.
 
 ## Usage
 ###
@@ -47,6 +53,7 @@ python fill_curvature.py ----file "Path_to_Your_Point_Cloud_file"
 ```bash
 python qt.py
 ```
+
 
 ## Stament  
 This project is an assignment for CV540.  

@@ -54,10 +54,6 @@ python fill_curvature.py ----file "Path_to_Your_Point_Cloud_file"
 python qt.py
 ```
 
-
-## Stament  
-This project is an assignment for CV540.  
-
 ## Refernces
 The URL of the original article is [Depth-Anything-V2](https://github.com/DepthAnything/Depth-Anything-V2/tree/main)  
 
